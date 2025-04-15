@@ -1,3 +1,5 @@
+## everything is taken from: https://stefan.saasen.me/articles/git-clone-in-haskell-from-the-bottom-up/#reimplementing-git-clone-in-haskell-from-the-bottom-up
+
 # Git Daemon + Protocol Notes
 
 ## Serving over git://
