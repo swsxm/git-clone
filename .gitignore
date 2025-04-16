@@ -1,0 +1,40 @@
+# Cabal build artifacts
+dist/
+dist-newstyle/
+
+# Cabal sandbox (if using older cabal versions)
+cabal.sandbox.config/
+cabal.config
+cabal.project.local
+cabal.project.local~ 
+
+# Stack (if you also use Stack)
+.stack-work/
+
+# GHC build artifacts
+*.hi
+*.o
+*.dyn_hi
+*.dyn_o
+*.prof
+*.aux
+*.hp
+*.eventlog
+
+# GHCi history & config
+.ghc.environment.*
+.ghci
+
+# Executables and logs
+*.out
+*.exe
+*.log
+
+# VSCode / JetBrains / other editor files
+.vscode/
+.idea/
+*.iml
+
+# OS-specific files
+.DS_Store
+Thumbs.db
