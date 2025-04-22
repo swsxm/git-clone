@@ -84,6 +84,17 @@ def send_git_service_request(
         return sock.recv(4096)
 
 
+def filter_peeled_tags(lines: list[str]) -> list[str]:
+    filtered = []
+    for line in lines:
+        # split into at most 2 parts
+        parts = line.split(None, 1)
+        # only consider lines that actually have a second part
+        if len(parts) == 2 and not parts[1].endswith("^{}"):
+            filtered.append(line)
+    return filtered
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Send a Git service request over TCP.")
     parser.add_argument(
@@ -117,7 +128,8 @@ def main() -> None:
             service=args.service,
         )
         logger.info("Received %d bytes from %s", len(response), git_url.host)
-        print(response)
+        advert_str = response.decode("utf-8", errors="replace")
+        print(filter_peeled_tags(advert_str.split("\n")))
     except socket.timeout:
         logger.error("Connection to %s:%d timed out", git_url.host, args.port)
         sys.exit(2)
