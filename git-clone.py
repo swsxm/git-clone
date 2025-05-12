@@ -6,11 +6,9 @@ import logging
 import re
 import socket
 import sys
-from typing import Any
 
-from pydantic import BaseModel, StrictStr, model_validator
+from models.GitUrl import GitUrl
 
-# Configure module-level logger
 logger = logging.getLogger(__name__)
 logging.basicConfig(
     level=logging.INFO,
@@ -18,25 +16,9 @@ logging.basicConfig(
 )
 
 
-class GitUrl(BaseModel):
-    """
-    Data model for a parsed Git URL.
-    """
-
-    proto: StrictStr
-    host: StrictStr
-    repo: StrictStr
-
-    @model_validator(mode="before")
-    def validate_not_empty(cls, values: dict[str, Any]) -> dict[str, Any]:
-        if not all(values.get(field) for field in ("proto", "host", "repo")):
-            raise ValueError("`proto`, `host`, and `repo` must be non-empty strings")
-        return values
-
-
 def parse_git_url(url: str) -> GitUrl:
     """
-    Parse a Git URL into its protocol, host, and repository components.
+    Parse a Git URL into its protocol, host, and repository components
     Supports patterns like:
       - proto://host/repo
       - proto:host/repo
@@ -44,7 +26,6 @@ def parse_git_url(url: str) -> GitUrl:
     if not url:
         raise ValueError("URL must not be empty")
 
-    # Split on `://`, `:`, or `/`, collapsing consecutive delimiters
     parts = [part for part in re.split(r"[/:]+", url) if part]
     if len(parts) < 3:
         raise ValueError(f"Invalid Git URL format: {url!r}")
@@ -56,10 +37,10 @@ def parse_git_url(url: str) -> GitUrl:
 
 def build_pkt_line(data: str) -> bytes:
     """
-    Build a Git pkt-line packet for the provided ASCII data.
+    Build a Git pkt-line packet for the provided ASCII data
     """
     payload = data.encode("utf-8")
-    length = len(payload) + 4  # 4 bytes for the length header
+    length = len(payload) + 4
     header = f"{length:04x}".encode("ascii")
     return header + payload
 
@@ -73,26 +54,46 @@ def send_git_service_request(
 ) -> bytes:
     """
     Connect to the Git service on `<host>:<port>`, send a service request for `<repo>`,
-    and return the raw response bytes.
+    and return the raw response bytes
     """
     payload = f"{service} /{repo}\0host={host}\0"
     pkt = build_pkt_line(payload)
 
     with socket.create_connection((host, port), timeout=timeout) as sock:
         sock.sendall(pkt)
-        # Read up to 4KB; adjust as needed for larger responses
         return sock.recv(4096)
 
 
-def filter_peeled_tags(lines: list[str]) -> list[str]:
-    filtered = []
-    for line in lines:
-        # split into at most 2 parts
-        parts = line.split(None, 1)
-        # only consider lines that actually have a second part
-        if len(parts) == 2 and not parts[1].endswith("^{}"):
-            filtered.append(line)
-    return filtered
+def parse_ref_advertisement(response: str) -> tuple[list[tuple[str, str]], list[str]]:
+    """
+    Parse the Git service's response into (SHA, ref) pairs and extract capabilities,
+    filters out peeled tags (refs ending with ^{})
+    """
+    lines = response.splitlines()
+    refs = []
+    capabilities = []
+
+    for i, line in enumerate(lines):
+        if not line.strip():
+            continue
+
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+
+        sha1 = parts[0]
+        refname = parts[1]
+
+        if i == 0 and "\0" in refname:
+            refname, caps_str = refname.split("\0", 1)
+            capabilities = caps_str.strip().split(" ")
+
+        if refname.endswith("^{}"):
+            continue  # skip peeled tags
+
+        refs.append((sha1, refname))
+
+    return refs, capabilities
 
 
 def main() -> None:
@@ -129,7 +130,17 @@ def main() -> None:
         )
         logger.info("Received %d bytes from %s", len(response), git_url.host)
         advert_str = response.decode("utf-8", errors="replace")
-        print(filter_peeled_tags(advert_str.split("\n")))
+
+        refs, capabilities = parse_ref_advertisement(advert_str)
+
+        print("Discovered references:")
+        for sha, ref in refs:
+            print(f"  {sha}  {ref}")
+
+        print("\nAdvertised capabilities:")
+        for cap in capabilities:
+            print(f"  - {cap}")
+
     except socket.timeout:
         logger.error("Connection to %s:%d timed out", git_url.host, args.port)
         sys.exit(2)
